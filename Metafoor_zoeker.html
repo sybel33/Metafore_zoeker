@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metafoor Zoeker</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' *; connect-src *;">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+        .container {
+            max-width: 600px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: #ffffff;
+            transition: background-color 0.3s;
+        }
+        .btn-primary:hover {
+            background-color: #4338ca;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="flex flex-col items-center justify-center min-h-screen p-4">
+        <div class="container w-full">
+            <h1 class="text-4xl font-bold text-center mb-6 text-gray-800">Metafoor Zoeker</h1>
+
+            <div class="card mb-6">
+                <h2 class="text-2xl font-semibold mb-4 text-center text-gray-700">Zoek een Metafoor</h2>
+                <div class="relative mb-4">
+                    <input id="conceptInput" type="text" placeholder="Voer hier een begrip of zin in..." class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <button id="generateBtn" class="btn-primary w-full p-3 rounded-lg font-semibold mt-3 flex items-center justify-center">
+                        <span id="buttonText">Genereer Metafoor</span>
+                        <div id="loader" class="loader hidden ml-2"></div>
+                    </button>
+                </div>
+                <div id="resultContainer" class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 hidden">
+                    <p id="metaphorText" class="text-xl italic font-medium text-gray-900"></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="text-2xl font-semibold mb-4 text-center text-gray-700">Jouw Opgeslagen Metaforen</h2>
+                <div id="metaphorsList" class="space-y-4">
+                    <!-- Opgeslagen metaforen worden hier weergegeven -->
+                </div>
+                <div id="noMetaphors" class="text-center text-gray-500 mt-4 hidden">
+                    Nog geen opgeslagen metaforen. Genereer er een om te beginnen!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // UI Elements
+        const conceptInput = document.getElementById('conceptInput');
+        const generateBtn = document.getElementById('generateBtn');
+        const buttonText = document.getElementById('buttonText');
+        const loader = document.getElementById('loader');
+        const resultContainer = document.getElementById('resultContainer');
+        const metaphorText = document.getElementById('metaphorText');
+        const metaphorsList = document.getElementById('metaphorsList');
+        const noMetaphors = document.getElementById('noMetaphors');
+
+        const LOCAL_STORAGE_KEY = 'metaphors';
+
+        // Load metaphors from local storage on page load
+        function loadMetaphors() {
+            const storedMetaphors = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+            renderMetaphors(storedMetaphors);
+        }
+
+        // Save a new metaphor to local storage
+        function saveMetaphor(concept, metaphor) {
+            const storedMetaphors = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+            const newMetaphor = { concept, metaphor, createdAt: new Date().toISOString() };
+            storedMetaphors.push(newMetaphor);
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(storedMetaphors));
+            renderMetaphors(storedMetaphors);
+        }
+
+        // Render metaphors to the UI
+        function renderMetaphors(metaphors) {
+            metaphorsList.innerHTML = ''; // Clear the list
+            if (metaphors.length === 0) {
+                noMetaphors.classList.remove('hidden');
+            } else {
+                noMetaphors.classList.add('hidden');
+                // Sort by creation date in descending order
+                metaphors.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                metaphors.forEach(data => {
+                    const div = document.createElement('div');
+                    div.className = 'p-4 bg-gray-50 rounded-lg border border-gray-200';
+                    div.innerHTML = `
+                        <p class="font-bold text-gray-800">${data.concept}</p>
+                        <p class="text-gray-600">${data.metaphor}</p>
+                    `;
+                    metaphorsList.appendChild(div);
+                });
+            }
+        }
+
+        // Add keypress event listener to the input field
+        conceptInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                generateBtn.click();
+            }
+        });
+
+        generateBtn.addEventListener('click', async () => {
+            const concept = conceptInput.value.trim();
+            if (!concept) return;
+
+            setLoading(true);
+
+            try {
+                // Construct the prompt for the AI
+                const systemPrompt = `Je bent een creatieve assistent. Geef een simpele, concrete en directe metafoor voor het volgende begrip. De metafoor moet heel eenvoudig te tekenen zijn. Antwoord alleen met de metafoor en niets anders.`;
+                const userQuery = `Geef een metafoor voor: ${concept}`;
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    tools: [{ "google_search": {} }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+                const metaphor = candidate?.content?.parts?.[0]?.text;
+
+                if (metaphor) {
+                    metaphorText.textContent = metaphor;
+                    resultContainer.classList.remove('hidden');
+                    saveMetaphor(concept, metaphor);
+                    conceptInput.value = '';
+                } else {
+                    metaphorText.textContent = "Geen metafoor gevonden. Probeer een ander begrip.";
+                    resultContainer.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("Error generating or saving metaphor:", error);
+                metaphorText.textContent = "Er is een fout opgetreden. Controleer de console voor details en probeer het later opnieuw.";
+                resultContainer.classList.remove('hidden');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        function setLoading(isLoading) {
+            generateBtn.disabled = isLoading;
+            if (isLoading) {
+                buttonText.textContent = 'Bezig...';
+                loader.classList.remove('hidden');
+            } else {
+                buttonText.textContent = 'Genereer Metafoor';
+                loader.classList.add('hidden');
+            }
+        }
+
+        // Initial load
+        window.onload = loadMetaphors;
+    </script>
+</body>
+</html>
+
